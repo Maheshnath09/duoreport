@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DuoReport - Realtime Collaborative Report Editor</title>
+
+    <!-- Local Tailwind CSS -->
+    <link href="/static/output.css" rel="stylesheet">
+
+    <!-- Quill.js -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+
+    <!-- Custom styles for dark mode placeholder -->
+    <style>
+        /* Quill editor placeholder in dark mode */
+        .dark .ql-editor.ql-blank::before {
+            color: #9ca3af !important;
+            /* gray-400 */
+            opacity: 1 !important;
+        }
+
+        /* Light mode placeholder (default) */
+        .ql-editor.ql-blank::before {
+            color: #6b7280;
+            /* gray-500 */
+            opacity: 0.6;
+        }
+
+        /* Gradient background for branding */
+        .gradient-bg {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+
+        /* Active section tab */
+        .section-tab.active {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+            color: white;
+        }
+
+        /* Logo sizing constraints */
+        img[alt="DuoReport Logo"] {
+            object-fit: contain;
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+
+    <!-- Landing Page -->
+    <div id="landing-page" class="min-h-screen flex items-center justify-center p-4 sm:p-6 md:p-8">
+        <div class="max-w-md w-full">
+            <div class="text-center mb-6 sm:mb-8">
+                <!-- Logo -->
+                <div class="flex justify-center mb-4">
+                    <img src="/static/logo.png" alt="DuoReport Logo" class="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24"
+                        style="max-width: 96px; max-height: 96px; width: auto; height: auto; object-fit: contain;">
+                </div>
+                <h1
+                    class="text-4xl sm:text-5xl md:text-6xl font-bold mb-3 sm:mb-4 gradient-bg bg-clip-text text-transparent">
+                    DuoReport</h1>
+                <p class="text-gray-600 dark:text-gray-400 text-base sm:text-lg">Realtime Collaborative Report Editor
+                </p>
+                <p class="text-xs sm:text-sm text-gray-500 dark:text-gray-500 mt-2">For exactly 2 users</p>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-4 sm:space-y-6">
+                <button onclick="createRoom()"
+                    class="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl transition-all duration-300 transform hover:scale-105 shadow-lg text-sm sm:text-base">
+                    Create New Room
+                </button>
+
+                <div class="relative">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300 dark:border-gray-600"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-4 bg-white dark:bg-gray-800 text-gray-500">or</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs sm:text-sm font-medium mb-2">Join Existing Room</label>
+                    <input type="text" id="room-id-input" placeholder="Enter Room ID"
+                        class="w-full px-3 sm:px-4 py-2 sm:py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base">
+                </div>
+
+                <button onclick="joinRoom()"
+                    class="w-full bg-gray-800 dark:bg-gray-700 hover:bg-gray-900 dark:hover:bg-gray-600 text-white font-bold py-3 sm:py-4 px-4 sm:px-6 rounded-xl transition-all duration-300 transform hover:scale-105 text-sm sm:text-base">
+                    Join Room
+                </button>
+            </div>
+
+            <div class="mt-4 sm:mt-6 text-center">
+                <button onclick="toggleDarkMode()"
+                    class="text-xs sm:text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 transition-colors">
+                    <span id="theme-icon">🌙</span> Toggle Dark Mode
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor Page -->
+    <div id="editor-page" class="hidden min-h-screen flex flex-col">
+        <!-- Top Navigation -->
+        <nav
+            class="bg-white dark:bg-gray-800 shadow-lg border-b border-gray-200 dark:border-gray-700 sticky top-0 z-50">
+            <div class="max-w-full mx-auto px-3 sm:px-4 md:px-6 py-3 sm:py-4">
+                <div class="flex items-center justify-between flex-wrap gap-2 sm:gap-4">
+                    <div class="flex items-center space-x-2 sm:space-x-4">
+                        <img src="/static/logo.png" alt="DuoReport Logo" class="w-8 h-8 sm:w-10 sm:h-10"
+                            style="max-width: 40px; max-height: 40px; width: auto; height: auto; object-fit: contain;">
+                        <h1 class="text-lg sm:text-xl md:text-2xl font-bold gradient-bg bg-clip-text text-transparent">
+                            DuoReport</h1>
+                        <span class="hidden sm:inline text-xs sm:text-sm text-gray-500 dark:text-gray-400">Room: <span
+                                id="current-room-id" class="font-mono font-semibold"></span></span>
+                    </div>
+
+                    <div class="flex items-center space-x-1 sm:space-x-2 md:space-x-4">
+                        <div id="users-list" class="hidden md:flex items-center space-x-2 text-xs sm:text-sm">
+                            <span class="text-gray-600 dark:text-gray-400">Users:</span>
+                        </div>
+
+                        <button onclick="exportPDF()"
+                            class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-1.5 sm:py-2 px-2 sm:px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-md flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm">
+                            <span>📄</span>
+                            <span class="hidden sm:inline">Export PDF</span>
+                        </button>
+
+                        <button onclick="toggleDarkMode()"
+                            class="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-1.5 sm:py-2 px-2 sm:px-4 rounded-lg transition-all duration-300 text-xs sm:text-sm">
+                            <span id="theme-icon-editor">🌙</span>
+                        </button>
+
+                        <button onclick="toggleSidebar()"
+                            class="md:hidden bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-1.5 sm:py-2 px-2 sm:px-4 rounded-lg transition-all duration-300 text-xs sm:text-sm">
+                            ☰
+                        </button>
+
+                        <button onclick="leaveRoom()"
+                            class="bg-red-500 hover:bg-red-600 text-white font-semibold py-1.5 sm:py-2 px-2 sm:px-4 rounded-lg transition-all duration-300 text-xs sm:text-sm">
+                            <span class="hidden sm:inline">Leave</span>
+                            <span class="sm:hidden">✕</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Mobile Room ID -->
+                <div class="sm:hidden mt-2 text-xs text-gray-500 dark:text-gray-400">
+                    Room: <span id="current-room-id-mobile" class="font-mono font-semibold"></span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex overflow-hidden relative">
+            <!-- Sidebar -->
+            <aside id="sidebar"
+                class="fixed md:static top-0 bottom-0 left-0 z-40 w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto -translate-x-full md:translate-x-0 transition-transform duration-300 ease-in-out">
+                <div class="p-3 sm:p-4 mt-16 md:mt-0">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-base sm:text-lg font-semibold text-gray-700 dark:text-gray-300">Sections</h2>
+                        <button onclick="closeSidebar()"
+                            class="md:hidden text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 text-xl">
+                            ✕
+                        </button>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="section-tab active cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('abstract')">
+                            <div class="font-medium text-sm sm:text-base">Abstract</div>
+                        </div>
+                        <div class="section-tab cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('introduction')">
+                            <div class="font-medium text-sm sm:text-base">Introduction</div>
+                        </div>
+                        <div class="section-tab cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('methodology')">
+                            <div class="font-medium text-sm sm:text-base">Methodology</div>
+                        </div>
+                        <div class="section-tab cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('results')">
+                            <div class="font-medium text-sm sm:text-base">Results</div>
+                        </div>
+                        <div class="section-tab cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('conclusion')">
+                            <div class="font-medium text-sm sm:text-base">Conclusion</div>
+                        </div>
+                        <div class="section-tab cursor-pointer px-3 sm:px-4 py-2 sm:py-3 rounded-lg bg-gray-100 dark:bg-gray-700"
+                            onclick="switchSection('references')">
+                            <div class="font-medium text-sm sm:text-base">References</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- Overlay for mobile sidebar -->
+            <div id="sidebar-overlay" class="fixed inset-0 bg-black bg-opacity-50 z-30 hidden" onclick="closeSidebar()">
+            </div>
+
+            <!-- Editor Area -->
+            <main class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900">
+                <div class="max-w-4xl mx-auto p-3 sm:p-4 md:p-6 lg:p-8">
+                    <div class="bg-white dark:bg-gray-800 rounded-xl sm:rounded-2xl shadow-xl overflow-hidden">
+                        <div
+                            class="p-3 sm:p-4 md:p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between flex-wrap gap-2 sm:gap-4">
+                            <h2 id="section-title"
+                                class="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-200">Abstract</h2>
+                            <button onclick="summarizeSection()"
+                                class="bg-purple-500 hover:bg-purple-600 text-white font-semibold py-1.5 sm:py-2 px-3 sm:px-4 rounded-lg transition-all duration-300 transform hover:scale-105 shadow-md flex items-center space-x-1 sm:space-x-2 text-xs sm:text-sm">
+                                <span>✨</span>
+                                <span>Summarize</span>
+                            </button>
+                        </div>
+
+                        <div id="editor-container" class="p-3 sm:p-4 md:p-6">
+                            <!-- Quill editors will be inserted here -->
+                            <div id="editor-abstract" class="editor-section"></div>
+                            <div id="editor-introduction" class="editor-section hidden"></div>
+                            <div id="editor-methodology" class="editor-section hidden"></div>
+                            <div id="editor-results" class="editor-section hidden"></div>
+                            <div id="editor-conclusion" class="editor-section hidden"></div>
+                            <div id="editor-references" class="editor-section hidden"></div>
+                        </div>
+
+                        <div id="cursor-status"
+                            class="px-3 sm:px-4 md:px-6 pb-3 sm:pb-4 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let currentRoom = null;
+        let currentUsername = null;
+        let currentSection = 'abstract';
+        let quillEditors = {};
+        let isUpdating = false;
+        let sidebarOpen = false;
+
+        const sections = ['abstract', 'introduction', 'methodology', 'results', 'conclusion', 'references'];
+
+        // Initialize Quill editors
+        function initializeEditors() {
+            sections.forEach(section => {
+                const editor = new Quill(`#editor-${section}`, {
+                    theme: 'snow',
+                    modules: {
+                        toolbar: [
+                            [{ 'header': [1, 2, 3, false] }],
+                            ['bold', 'italic', 'underline'],
+                            [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                            ['link'],
+                            ['clean']
+                        ]
+                    },
+                    placeholder: `Write your ${section} here...`
+                });
+
+                // Listen for text changes
+                editor.on('text-change', (delta, oldDelta, source) => {
+                    if (source === 'user' && !isUpdating) {
+                        const content = editor.root.innerHTML;
+                        sendEdit(section, delta, content);
+                    }
+                });
+
+                // Listen for selection changes (cursor)
+                editor.on('selection-change', (range, oldRange, source) => {
+                    if (range && source === 'user') {
+                        sendCursor(section, range.index);
+                    }
+                });
+
+                quillEditors[section] = editor;
+            });
+        }
+
+        // Toggle sidebar on mobile
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+
+            if (sidebar.classList.contains('-translate-x-full')) {
+                // Open sidebar
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+                sidebarOpen = true;
+            } else {
+                // Close sidebar
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+                sidebarOpen = false;
+            }
+        }
+
+        // Close sidebar (for mobile)
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            sidebar.classList.add('-translate-x-full');
+            overlay.classList.add('hidden');
+            sidebarOpen = false;
+        }
+
+        // Create new room
+        async function createRoom() {
+            try {
+                const response = await fetch('/create_room', { method: 'POST' });
+                const data = await response.json();
+                const roomId = data.room_id;
+
+                // Prompt for username
+                const username = prompt('Enter your name:') || 'Anonymous';
+
+                // Join the room
+                connectToRoom(roomId, username);
+            } catch (error) {
+                alert('Error creating room: ' + error.message);
+            }
+        }
+
+        // Join existing room
+        function joinRoom() {
+            const roomId = document.getElementById('room-id-input').value.trim();
+            if (!roomId) {
+                alert('Please enter a room ID');
+                return;
+            }
+
+            const username = prompt('Enter your name:') || 'Anonymous';
+            connectToRoom(roomId, username);
+        }
+
+        // Connect to WebSocket
+        function connectToRoom(roomId, username) {
+            currentRoom = roomId;
+            currentUsername = username;
+
+            // Show editor page
+            document.getElementById('landing-page').classList.add('hidden');
+            document.getElementById('editor-page').classList.remove('hidden');
+            document.getElementById('current-room-id').textContent = roomId;
+            document.getElementById('current-room-id-mobile').textContent = roomId;
+
+            // Initialize editors if not already done
+            if (Object.keys(quillEditors).length === 0) {
+                initializeEditors();
+            }
+
+            // Connect WebSocket
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws/report/${roomId}`);
+
+            ws.onopen = () => {
+                console.log('Connected to room:', roomId);
+                // Send username
+                ws.send(JSON.stringify({ username: username }));
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleMessage(data);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                alert('Connection error. Please try again.');
+            };
+
+            ws.onclose = () => {
+                console.log('Disconnected from room');
+            };
+        }
+
+        // Handle incoming messages
+        function handleMessage(data) {
+            const type = data.type;
+
+            if (type === 'init') {
+                // Load initial document
+                const doc = data.document;
+                isUpdating = true;
+                sections.forEach(section => {
+                    const content = doc.sections[section] || '';
+                    quillEditors[section].root.innerHTML = content;
+                });
+                isUpdating = false;
+
+                updateUsersList(data.users);
+            }
+            else if (type === 'edit') {
+                // Apply edit from other user
+                const section = data.section;
+                const delta = data.delta;
+
+                if (quillEditors[section]) {
+                    isUpdating = true;
+                    if (delta) {
+                        quillEditors[section].updateContents(delta, 'api');
+                    }
+                    isUpdating = false;
+                }
+            }
+            else if (type === 'cursor') {
+                // Show other user's cursor
+                const username = data.username;
+                const section = data.section;
+                const position = data.position;
+
+                if (section === currentSection) {
+                    updateCursorStatus(`${username} is typing at position ${position}...`);
+                }
+            }
+            else if (type === 'user_joined') {
+                updateUsersList(data.users);
+                showNotification(`${data.username} joined the room`);
+            }
+            else if (type === 'user_left') {
+                updateUsersList(data.users);
+                showNotification(`${data.username} left the room`);
+            }
+            else if (type === 'error') {
+                alert(data.message);
+                leaveRoom();
+            }
+        }
+
+        // Send edit to server
+        function sendEdit(section, delta, content) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'edit',
+                    section: section,
+                    delta: delta,
+                    content: content
+                }));
+            }
+        }
+
+        // Send cursor position
+        function sendCursor(section, position) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'cursor',
+                    section: section,
+                    position: position
+                }));
+            }
+        }
+
+        // Switch section
+        function switchSection(section) {
+            currentSection = section;
+
+            // Close sidebar on mobile after selection
+            if (window.innerWidth < 768) {
+                closeSidebar();
+            }
+
+            // Update tabs
+            document.querySelectorAll('.section-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            event.target.closest('.section-tab').classList.add('active');
+
+            // Update editors
+            document.querySelectorAll('.editor-section').forEach(editor => {
+                editor.classList.add('hidden');
+            });
+            document.getElementById(`editor-${section}`).classList.remove('hidden');
+
+            // Update title
+            const titles = {
+                'abstract': 'Abstract',
+                'introduction': 'Introduction',
+                'methodology': 'Methodology',
+                'results': 'Results',
+                'conclusion': 'Conclusion',
+                'references': 'References'
+            };
+            document.getElementById('section-title').textContent = titles[section];
+
+            // Clear cursor status
+            updateCursorStatus('');
+        }
+
+        // Export PDF
+        async function exportPDF() {
+            if (!currentRoom) return;
+
+            try {
+                const response = await fetch(`/export/${currentRoom}`);
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `report_${currentRoom}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+
+                showNotification('PDF exported successfully!');
+            } catch (error) {
+                alert('Error exporting PDF: ' + error.message);
+            }
+        }
+
+        // Summarize section
+        async function summarizeSection() {
+            if (!currentRoom) return;
+
+            try {
+                showNotification('Generating summary... This may take 20-30 seconds on first request.');
+
+                const response = await fetch(`/summarize/${currentRoom}/${currentSection}`, {
+                    method: 'POST'
+                });
+                const data = await response.json();
+                const summary = data.summary;
+
+                // Insert summary as bullet list
+                const editor = quillEditors[currentSection];
+                const currentLength = editor.getLength();
+
+                editor.insertText(currentLength, '\n\nSummary:\n', 'bold');
+                summary.forEach(bullet => {
+                    editor.insertText(editor.getLength(), bullet + '\n', { list: 'bullet' });
+                });
+
+                showNotification('Summary generated!');
+            } catch (error) {
+                alert('Error generating summary: ' + error.message);
+            }
+        }
+
+        // Update users list
+        function updateUsersList(users) {
+            const usersList = document.getElementById('users-list');
+            const usersHTML = users.map(user =>
+                `<span class="px-2 sm:px-3 py-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 rounded-full font-medium text-xs sm:text-sm">${user}</span>`
+            ).join('');
+            usersList.innerHTML = '<span class="text-gray-600 dark:text-gray-400">Users:</span> ' + usersHTML;
+        }
+
+        // Update cursor status
+        function updateCursorStatus(message) {
+            document.getElementById('cursor-status').textContent = message;
+        }
+
+        // Show notification
+        function showNotification(message) {
+            // Simple notification (could be enhanced with a toast library)
+            const status = document.getElementById('cursor-status');
+            status.textContent = message;
+            setTimeout(() => {
+                status.textContent = '';
+            }, 3000);
+        }
+
+        // Leave room
+        function leaveRoom() {
+            if (ws) {
+                ws.close();
+            }
+
+            document.getElementById('editor-page').classList.add('hidden');
+            document.getElementById('landing-page').classList.remove('hidden');
+
+            currentRoom = null;
+            currentUsername = null;
+        }
+
+        // Toggle dark mode
+        function toggleDarkMode() {
+            const html = document.documentElement;
+            html.classList.toggle('dark');
+
+            const isDark = html.classList.contains('dark');
+            document.getElementById('theme-icon').textContent = isDark ? '☀️' : '🌙';
+            const editorIcon = document.getElementById('theme-icon-editor');
+            if (editorIcon) {
+                editorIcon.textContent = isDark ? '☀️' : '🌙';
+            }
+
+            // Save preference
+            localStorage.setItem('darkMode', isDark);
+        }
+
+        // Load dark mode preference
+        window.addEventListener('DOMContentLoaded', () => {
+            const darkMode = localStorage.getItem('darkMode');
+            if (darkMode === 'false') {
+                document.documentElement.classList.remove('dark');
+                document.getElementById('theme-icon').textContent = '🌙';
+            }
+
+            // Check if room ID in URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+            if (roomId) {
+                document.getElementById('room-id-input').value = roomId;
+            }
+        });
+    </script>
+</body>
+
+</html>
