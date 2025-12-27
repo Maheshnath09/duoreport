@@ -2,8 +2,6 @@
 
 <div align="center">
 
-![DuoReport Logo](static/logo.png)
-
 **Realtime Collaborative Report Editor**
 
 A modern, real-time collaborative document editor designed for exactly 2 users to work together seamlessly.
