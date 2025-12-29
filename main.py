@@ -8,6 +8,8 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import redis.asyncio as aioredis
+from upstash_redis import Redis as UpstashRedis
+import os
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
@@ -37,8 +39,10 @@ app.add_middleware(
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Redis connection
+# Redis connection - supports both Upstash (serverless) and local Redis
 redis_client: Optional[aioredis.Redis] = None
+upstash_client: Optional[UpstashRedis] = None
+use_upstash = False  # Flag to track which Redis backend we're using
 
 # Document template sections
 TEMPLATE_SECTIONS = {
@@ -58,6 +62,29 @@ SECTION_TITLES = {
     "conclusion": "Conclusion",
     "references": "References"
 }
+
+
+# Helper functions for Redis operations (works with both Upstash and local Redis)
+async def redis_get(key: str):
+    """Get a value from Redis"""
+    if use_upstash and upstash_client:
+        return upstash_client.get(key)
+    elif redis_client:
+        return await redis_client.get(key)
+    return None
+
+
+async def redis_setex(key: str, ttl: int, value: str):
+    """Set a value in Redis with expiry"""
+    if use_upstash and upstash_client:
+        upstash_client.setex(key, ttl, value)
+    elif redis_client:
+        await redis_client.setex(key, ttl, value)
+
+
+def is_redis_available():
+    """Check if Redis is available"""
+    return (use_upstash and upstash_client) or redis_client
 
 
 class ConnectionManager:
@@ -132,13 +159,13 @@ class ConnectionManager:
             while True:
                 await asyncio.sleep(5)
                 # Update last_active timestamp
-                if redis_client:
+                if is_redis_available():
                     doc_key = f"report:{room_id}"
-                    doc_data = await redis_client.get(doc_key)
+                    doc_data = await redis_get(doc_key)
                     if doc_data:
                         doc = json.loads(doc_data)
                         doc["last_active"] = time.time()
-                        await redis_client.setex(
+                        await redis_setex(
                             doc_key,
                             3600,  # 1 hour expiry
                             json.dumps(doc)
@@ -159,17 +186,31 @@ manager = ConnectionManager()
 @app.on_event("startup")
 async def startup_event():
     """Initialize Redis connection on startup"""
-    global redis_client
-    try:
-        redis_client = await aioredis.from_url(
-            "redis://localhost:6379",
-            encoding="utf-8",
-            decode_responses=True
-        )
-        print("✓ Connected to Redis")
-    except Exception as e:
-        print(f"✗ Failed to connect to Redis: {e}")
-        print("Please ensure Redis is running on localhost:6379")
+    global redis_client, upstash_client, use_upstash
+    
+    # Check for Upstash credentials (for Vercel/serverless deployment)
+    upstash_url = os.environ.get("UPSTASH_REDIS_REST_URL")
+    upstash_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN")
+    
+    if upstash_url and upstash_token:
+        try:
+            upstash_client = UpstashRedis(url=upstash_url, token=upstash_token)
+            use_upstash = True
+            print("✓ Connected to Upstash Redis (serverless)")
+        except Exception as e:
+            print(f"✗ Failed to connect to Upstash Redis: {e}")
+    else:
+        # Fallback to local Redis for development
+        try:
+            redis_client = await aioredis.from_url(
+                "redis://localhost:6379",
+                encoding="utf-8",
+                decode_responses=True
+            )
+            print("✓ Connected to local Redis")
+        except Exception as e:
+            print(f"✗ Failed to connect to Redis: {e}")
+            print("Please ensure Redis is running on localhost:6379")
 
 
 @app.on_event("shutdown")
@@ -189,7 +230,7 @@ async def get_index():
 @app.post("/create_room")
 async def create_room():
     """Create a new room with a unique ID and initialize document template"""
-    if not redis_client:
+    if not is_redis_available():
         raise HTTPException(status_code=503, detail="Redis not available")
     
     room_id = str(uuid.uuid4())[:8]  # Short UUID
@@ -202,7 +243,7 @@ async def create_room():
         "created_at": time.time()
     }
     
-    await redis_client.setex(
+    await redis_setex(
         f"report:{room_id}",
         3600,  # 1 hour expiry
         json.dumps(doc_data)
@@ -254,9 +295,9 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     
     try:
         # Load initial document
-        if redis_client:
+        if is_redis_available():
             doc_key = f"report:{room_id}"
-            doc_data = await redis_client.get(doc_key)
+            doc_data = await redis_get(doc_key)
             
             if doc_data:
                 doc = json.loads(doc_data)
@@ -267,7 +308,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                     "cursors": {},
                     "last_active": time.time()
                 }
-                await redis_client.setex(doc_key, 3600, json.dumps(doc))
+                await redis_setex(doc_key, 3600, json.dumps(doc))
             
             # Send initial state to user
             await websocket.send_json({
@@ -295,15 +336,15 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
                 delta = data.get("delta")
                 content = data.get("content")
                 
-                if redis_client and section:
+                if is_redis_available() and section:
                     # Update document in Redis
-                    doc_data = await redis_client.get(doc_key)
+                    doc_data = await redis_get(doc_key)
                     if doc_data:
                         doc = json.loads(doc_data)
                         if content is not None:
                             doc["sections"][section] = content
                         doc["last_active"] = time.time()
-                        await redis_client.setex(doc_key, 3600, json.dumps(doc))
+                        await redis_setex(doc_key, 3600, json.dumps(doc))
                     
                     # Broadcast to other users
                     await manager.broadcast(room_id, {
@@ -342,12 +383,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
 @app.get("/export/{room_id}")
 async def export_pdf(room_id: str):
     """Export document as PDF"""
-    if not redis_client:
+    if not is_redis_available():
         raise HTTPException(status_code=503, detail="Redis not available")
     
     # Load document from Redis
     doc_key = f"report:{room_id}"
-    doc_data = await redis_client.get(doc_key)
+    doc_data = await redis_get(doc_key)
     
     if not doc_data:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -437,12 +478,12 @@ async def export_pdf(room_id: str):
 @app.post("/summarize/{room_id}/{section}")
 async def summarize_section(room_id: str, section: str):
     """Summarize a section using Hugging Face API"""
-    if not redis_client:
+    if not is_redis_available():
         raise HTTPException(status_code=503, detail="Redis not available")
     
     # Load document from Redis
     doc_key = f"report:{room_id}"
-    doc_data = await redis_client.get(doc_key)
+    doc_data = await redis_get(doc_key)
     
     if not doc_data:
         raise HTTPException(status_code=404, detail="Document not found")
